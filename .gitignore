@@ -1,0 +1,6 @@
+*.o
+*.Po
+*.dirstamp
+Makefile
+*autom4te*
+*.in
