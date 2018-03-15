@@ -1,0 +1,6 @@
+AC_INIT([LAMSTACK], 1.0)
+AM_INIT_AUTOMAKE([foreign subdir-objects])
+AC_PROG_CXX
+AM_PROG_AS
+AC_CONFIG_FILES([Makefile])
+AC_OUTPUT
