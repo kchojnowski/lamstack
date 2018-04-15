@@ -14,6 +14,11 @@ void Logger::print(const char* log)
 
 }
 
+void Logger::printWithDate(const char* log)
+{
+
+}
+
 void Logger::printWithNewline(const char* log)
 {
 

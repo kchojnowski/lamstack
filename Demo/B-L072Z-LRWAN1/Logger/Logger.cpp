@@ -40,6 +40,11 @@ void Logger::print(const char* log)
     HAL_UART_Transmit(&this->uartLogHandle, (uint8_t*)log, strlen(log), 1000);
 }
 
+void Logger::printWithDate(const char* log)
+{
+    this->print(log);
+}
+
 void Logger::printWithNewline(const char* log)
 {
     HAL_UART_Transmit(&this->uartLogHandle, (uint8_t*)log, strlen(log), 1000);
