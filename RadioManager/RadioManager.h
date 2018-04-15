@@ -341,7 +341,7 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::sendFirstPacket(uint8
     else
         this->dropFirstPacket(buffer, bufferPointer, TxResultNoAck);
 
-    this->log.printWithDate(" TX [");
+    this->log.printWithDate("TX [");
     this->log.printAsHex(buffer, packetLen);
     this->log.printWithNewline("]");
 }
