@@ -341,7 +341,7 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::sendFirstPacket(uint8
     else
         this->dropFirstPacket(buffer, bufferPointer, TxResultNoAck);
 
-    this->log.print(" TX [");
+    this->log.printWithDate(" TX [");
     this->log.printAsHex(buffer, packetLen);
     this->log.printWithNewline("]");
 }
@@ -465,7 +465,7 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::process(uint32_t elap
         this->sx.getData(this->rxBuffer, &dataLen);
         this->sx.startRx();
 
-        this->log.print(" RX [");
+        this->log.printWithDate("RX [");
         this->log.printAsHex(this->rxBuffer, dataLen);
         this->log.printWithNewline("]");
 
@@ -740,7 +740,7 @@ uint16_t RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::getLastPacketTime
 template <class SpiCtrlTempl, class EventHndlTempl, class LogTempl>
 void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::logRoutingTable(void)
 {
-    this->log.print("RT [");
+    this->log.printWithDate("RT [");
     this->log.printAsHex(this->radioConfig.routingTable, MAX_NODES);
     this->log.printWithNewline("]");
 }
@@ -750,7 +750,7 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::logRssi(void)
 {
     int rIndex;
 
-    this->log.print("RSSI [");
+    this->log.printWithDate("RSSI [");
 
     for(rIndex = 1; rIndex < MAX_NODES; rIndex++) {
         this->log.print((int)this->getRssi(rIndex) - 164);
@@ -758,7 +758,7 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::logRssi(void)
     }
     this->log.printWithNewline("]");
 
-    this->log.print("SNR [");
+    this->log.printWithDate("SNR [");
     for(rIndex = 1; rIndex < MAX_NODES; rIndex++) {
         this->log.print((int)this->getSnr(rIndex)/4);
         this->log.print(" ");
@@ -809,7 +809,7 @@ template <class SpiCtrlTempl, class EventHndlTempl, class LogTempl>
 void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::logPacketTime(void)
 {
     int rIndex;
-    this->log.print("LAST PCK TIME [");
+    this->log.printWithDate("LAST PCK TIME [");
 
     for(rIndex = 1; rIndex < MAX_NODES; rIndex++) {
         this->log.print((int)this->lastPacketTime[rIndex]);
