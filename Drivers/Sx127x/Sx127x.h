@@ -231,6 +231,7 @@ public:
     int8_t getSnr(void);
     void printRegisters(void);
     uint8_t getRand30(void);
+    uint8_t getRand(void);
 
 private:
     bool isBusy(void);
@@ -404,6 +405,12 @@ template <class SpiCtrlTempl, class LogTempl>
 uint8_t Sx127x<SpiCtrlTempl, LogTempl>::getRand30(void)
 {
     return this->spi.readReg(SX127X_REG_2C_RSSI_WIDEBAND) % 30;
+}
+
+template <class SpiCtrlTempl, class LogTempl>
+uint8_t Sx127x<SpiCtrlTempl, LogTempl>::getRand(void)
+{
+    return this->spi.readReg(SX127X_REG_2C_RSSI_WIDEBAND);
 }
 
 template <class SpiCtrlTempl, class LogTempl>

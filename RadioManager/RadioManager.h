@@ -6,6 +6,7 @@
 #include "RadioConfig.h"
 #include "RadioTxPacket.h"
 #include "RadioRxPacket.h"
+#include "Xxtea.h"
 #include "Sx127x.h"
 #include "Crc.h"
 
@@ -18,6 +19,10 @@
 #define PACKET_TX_ACK_BUFFER_LEN 128
 #define PACKET_TX_CALLBACKS_LEN PACKET_TX_BUFFER_LEN/PACKET_HEADER_LEN
 #define PACKET_TX_ACK_CALLBACKS_LEN PACKET_TX_ACK_BUFFER_LEN/PACKET_HEADER_LEN
+
+#define PACKET_MAX_ENCODED_LEN 64
+#define PACKET_KEY_BUFFER_LEN  4
+#define PACKET_DATA_BUFFER_LEN 16
 
 #define PACKET_FIELD_DST      0
 #define PACKET_FIELD_SRC      1
@@ -103,6 +108,10 @@ private:
     uint8_t rxBuffer[PACKET_RX_BUFFER_LEN];
     uint8_t packetBuffer[PACKET_MAX_DATA_LEN];
     uint8_t packetId;
+
+    uint8_t cipherBuffer[PACKET_MAX_ENCODED_LEN];
+    uint32_t cipherDataBuffer[PACKET_DATA_BUFFER_LEN];
+    uint32_t cipherKeyBuffer[PACKET_KEY_BUFFER_LEN];
 
     uint8_t rssi[MAX_NODES];
     int8_t snr[MAX_NODES];
@@ -207,6 +216,8 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::init()
 
     this->logRoutingTable();
     this->sx.printRegisters();
+
+    xxtea_init(cipherDataBuffer, PACKET_DATA_BUFFER_LEN, cipherKeyBuffer, PACKET_KEY_BUFFER_LEN);
 }
 
 template <class SpiCtrlTempl, class EventHndlTempl, class LogTempl>
@@ -321,9 +332,17 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::sendFirstPacket(uint8
     this->sx.stopRx();
 
     this->sx.clearFlags(SX127X_TX_DONE);
+
+    size_t len = buffer[PACKET_FIELD_DATALEN] + PACKET_HEADER_LEN;
     uint8_t packetLen = buffer[PACKET_FIELD_DATALEN] + PACKET_HEADER_LEN;
 
-    while((this->sx.send(buffer, packetLen) != Sx127x<SpiCtrlTempl, LogTempl>::Sx127x_OK));
+    for (int i = 0; i < len; i++)
+        this->cipherBuffer[i] = buffer[i];
+    this->cipherBuffer[len] = this->sx.getRand();
+
+    xxtea_encrypt(this->cipherBuffer, len + 1, RADIOMANAGER_KEY, this->cipherBuffer, &len);
+
+    while((this->sx.send(this->cipherBuffer, len) != Sx127x<SpiCtrlTempl, LogTempl>::Sx127x_OK));
 
     while (((this->sx.getFlags() & SX127X_TX_DONE) == 0));
 
@@ -464,10 +483,6 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::process(uint32_t elap
         this->sx.stopRx();
         this->sx.getData(this->rxBuffer, &dataLen);
         this->sx.startRx();
-
-        this->log.printWithDate("RX [");
-        this->log.printAsHex(this->rxBuffer, dataLen);
-        this->log.printWithNewline("]");
 
         if(flags & SX127X_PAYLOAD_CRC_ERROR) {
             this->log.printWithNewline("BAD CRC");
@@ -614,43 +629,58 @@ void RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::handleStatMessage(uin
 template <class SpiCtrlTempl, class EventHndlTempl, class LogTempl>
 uint8_t RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::handleMessage(uint8_t* msg)
 {
-    uint8_t crc = Crc::crc8(msg, PACKET_HEADER_LEN - 1);
-    if(crc != msg[PACKET_FIELD_CRC]) {
+    size_t cipherlen = 0;
+    size_t packetlen = 0;
+    for (cipherlen = 8; cipherlen <= 64; cipherlen += 4)
+        if (xxtea_decrypt(msg, cipherlen, RADIOMANAGER_KEY, this->cipherBuffer, &packetlen))
+            break;
+
+    if (cipherlen > 64) {
+        this->log.printWithNewline("UNABLE TO DECIPHER");
+        return 0xFF;
+    }
+
+    uint8_t crc = Crc::crc8(this->cipherBuffer, PACKET_HEADER_LEN - 1);
+    if(crc != this->cipherBuffer[PACKET_FIELD_CRC]) {
         this->log.printWithNewline("BAD HEADER CRC");
         return 0xFF;
     }
 
-    uint8_t dstrt = msg[PACKET_FIELD_DSTRT];
-    uint8_t dst = msg[PACKET_FIELD_DST];
-    uint8_t srcrt = msg[PACKET_FIELD_SRCRT];
+    this->log.printWithDate("RX [");
+    this->log.printAsHex(this->cipherBuffer, packetlen);
+    this->log.printWithNewline("]");
+
+    uint8_t dstrt = this->cipherBuffer[PACKET_FIELD_DSTRT];
+    uint8_t dst = this->cipherBuffer[PACKET_FIELD_DST];
+    uint8_t srcrt = this->cipherBuffer[PACKET_FIELD_SRCRT];
 
     this->setRssi(srcrt, this->sx.getRssi());
     this->setSnr(srcrt, this->sx.getSnr());
     this->setLastPacketTime(srcrt, 0);
 
-    if(msg[PACKET_FIELD_LIFE] > 0)
-        msg[PACKET_FIELD_LIFE]--;
+    if(this->cipherBuffer[PACKET_FIELD_LIFE] > 0)
+        this->cipherBuffer[PACKET_FIELD_LIFE]--;
 
     if(dst == PACKET_ADDR_BROADCAST || (dstrt == this->radioConfig.address && dst == this->radioConfig.address)) {
-        if (msg[PACKET_FIELD_TYPE] & PACKET_FLAGS_SETROUTE) {
-            this->setRoute(msg[PACKET_FIELD_SRC], srcrt);
+        if (this->cipherBuffer[PACKET_FIELD_TYPE] & PACKET_FLAGS_SETROUTE) {
+            this->setRoute(this->cipherBuffer[PACKET_FIELD_SRC], srcrt);
             this->logRoutingTable();
 
             eventHndl.configChanged(this->radioConfig);
         }
 
         this->packetsReceived++;
-        switch(msg[PACKET_FIELD_TYPE] & PACKET_TYPE) {
+        switch(this->cipherBuffer[PACKET_FIELD_TYPE] & PACKET_TYPE) {
         case PACKET_TYPE_DATA:
-            this->handleDataMessage(msg);
+            this->handleDataMessage(this->cipherBuffer);
             break;
         case PACKET_TYPE_STAT:
-            this->handleStatMessage(msg);
+            this->handleStatMessage(this->cipherBuffer);
             break;
         }
-    } else if(dstrt == this->radioConfig.address && msg[PACKET_FIELD_LIFE] > 0) {
-        if (msg[PACKET_FIELD_TYPE] & PACKET_FLAGS_SETROUTE) {
-            this->setRoute(msg[PACKET_FIELD_SRC], srcrt);
+    } else if(dstrt == this->radioConfig.address && this->cipherBuffer[PACKET_FIELD_LIFE] > 0) {
+        if (this->cipherBuffer[PACKET_FIELD_TYPE] & PACKET_FLAGS_SETROUTE) {
+            this->setRoute(this->cipherBuffer[PACKET_FIELD_SRC], srcrt);
             this->logRoutingTable();
 
             eventHndl.configChanged(this->radioConfig);
@@ -658,18 +688,18 @@ uint8_t RadioManager<SpiCtrlTempl, EventHndlTempl, LogTempl>::handleMessage(uint
 
         this->packetsRtReceived++;
         RadioTxPacket p;
-        p.type = msg[PACKET_FIELD_TYPE];
-        p.src = msg[PACKET_FIELD_SRC];
-        p.dst = msg[PACKET_FIELD_DST];
-        p.life = msg[PACKET_FIELD_LIFE];
-        p.id = msg[PACKET_FIELD_ID];
-        p.data = &msg[PACKET_FIELD_DATA];
-        p.len = msg[PACKET_FIELD_DATALEN];
+        p.type = this->cipherBuffer[PACKET_FIELD_TYPE];
+        p.src = this->cipherBuffer[PACKET_FIELD_SRC];
+        p.dst = this->cipherBuffer[PACKET_FIELD_DST];
+        p.life = this->cipherBuffer[PACKET_FIELD_LIFE];
+        p.id = this->cipherBuffer[PACKET_FIELD_ID];
+        p.data = &this->cipherBuffer[PACKET_FIELD_DATA];
+        p.len = this->cipherBuffer[PACKET_FIELD_DATALEN];
         p.callback = NULL;
         this->addPacketToQueue(p);
     }
 
-    return msg[PACKET_FIELD_DATALEN] + PACKET_HEADER_LEN;
+    return cipherlen;
 }
 
 template <class SpiCtrlTempl, class EventHndlTempl, class LogTempl>

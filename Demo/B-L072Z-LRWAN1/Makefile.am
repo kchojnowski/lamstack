@@ -8,6 +8,7 @@ AM_CFLAGS = -O0 \
             -mthumb \
             -mfloat-abi=soft \
             -DSTM32L072xx \
+	    -DRADIOMANAGER_KEY="\"SECRET_KEY\"" \
             -fdata-sections \
             -ffunction-sections \
             -Wl,--gc-sections \
@@ -26,6 +27,7 @@ AM_CFLAGS = -O0 \
             -I$(top_builddir)/Logger \
             -I$(top_builddir)/Delay \
             -I$(top_builddir)/../../Crc \
+            -I$(top_builddir)/../../Xxtea \
             -I$(top_builddir)/../../Utils
 
 AM_CXXFLAGS = ${AM_CFLAGS} \
@@ -60,6 +62,7 @@ lamstack_demo_SOURCES = startup_stm32l072xx.s \
                         Logger/Logger.cpp \
                         ../../Utils/Utils.cpp \
                         ../../Crc/Crc.cpp \
+                        ../../Xxtea/Xxtea.cpp \
                         Tasks/InitTask/InitTask.cpp \
                         Tasks/RadioTask/RadioTask.cpp
 
